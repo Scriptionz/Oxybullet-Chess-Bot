@@ -25,15 +25,15 @@ jobs:
       - name: Cerebellum Kitabini Indir ve Kur
         run: |
           echo "📚 Devasa açılış kitabı indiriliyor..."
-          # Release linkini kullanarak ZIP dosyasını çekiyoruz
-          curl -L "https://github.com/Scriptionz/Oxybullet-Chess-Bot/releases/download/v1_Book/Cerebellum3Merge.zip" -o book.zip
+          # Doğrudan .bin dosyasını indiriyoruz (ZIP ile uğraşmıyoruz)
+          curl -L "https://github.com/Scriptionz/Oxybullet-Chess-Bot/releases/download/v1_Book/Cerebellum3Merge.bin" -o book.bin
           
-          echo "📂 ZIP'ten çıkarılıyor..."
-          unzip book.zip
-          
-          # Dosya adını kodun tanıması için 'book.bin' yapıyoruz
-          mv Cerebellum3Merge.bin book.bin
-          
+          # Dosyanın gerçekten inip inmediğini kontrol et
+          if [ ! -f book.bin ]; then
+            echo "❌ HATA: Kitap dosyası indirilemedi! Linki kontrol edin."
+            exit 1
+          fi
+
           echo "✅ Kitap hazır: $(ls -lh book.bin)"
 
       - name: Motoru Derle

@@ -6,55 +6,55 @@ engine:
   name: "Ethereal"
   protocol: "uci"
   uci_options:
-    Threads: 1            # 2 motor için toplam 2 thread (2 çekirdekli sistemde her motora 1 saf çekirdek)
-    Hash: 256             # 2 motor x 256MB = 512MB RAM. Hafıza derinliği için ideal.
-    MoveOverhead: 3000    # Lag koruması. Uzun maçlarda (30+0) risk almamak için 2 saniye pay.
-    Ponder: false         # Rakip düşünürken CPU'yu yormasın, diğer motorun performansını çalmasın.
+    Threads: 2            # Performans için 2 çekirdek
+    Hash: 512             # Hızlı tablo erişimi
+    # KRİTİK AYARLAR:
+    MoveOverhead: 100     # Botun hamleyi iletmek için bıraktığı pay (0.1 sn)
+    Ponder: true          # Rakip düşünürken hesapla (Anında cevap için şart)
+    Slow Mover: 10        # Ethereal'a "vaktin olsa bile harcama" talimatı (0-100 arası, 10 çok hızlıdır)
     SyzygyPath: "./syzygy"
     SyzygyProbeDepth: 1
 
-# --- SOSYAL AYARLAR ---
+# --- SOSYAL MESAJLAR ---
 chat:
-  welcome: "Hi! Oxydan v7 InDev actived. Be ready for a great game :)"
-  goodbye: "GG! See you later."
+  welcome: "🏎️ OxyBullet Speed Demon! Playing everything like Bullet. Don't blink!"
+  goodbye: "GG! Still too fast, even in classical? ;)"
 
-# --- SAVAŞ MODU (GELEN MEYDAN OKUMALAR) ---
+# --- TÜM ZAMAN TEMPOLARI AÇIK ---
 challenge_policy:
   accept_bot: true
   accept_human: true
-  rated: false
+  rated: true             
   time_controls:
-    - bullet
-    - blitz
-    - rapid
-    - classical
-  min_time: 60
-  max_time: 2000          # 30+0 gibi uzun maçları da kabul edebilmesi için yükseltildi
+    - ultrabullet         # 15s, 30s
+    - bullet              # 1dk, 2dk
+    - blitz               # 3dk, 5dk
+    - rapid               # 10dk+
+    - classical           # 30dk+
+  min_time: 15            # Minimum HyperBullet
+  max_time: 10800         # Maksimum 3 saat (Tüm zamanlar dahil)
 
-# --- MATCHMAKING (BİZİM MEYDAN OKUMALARIMIZ) ---
+# --- SÜREKLİ MAÇ ARAYIŞI ---
 matchmaking:
   allow_feed: true
-  challenge_interval: 60  # Daha ağırbaşlı ve seçici maç arama aralığı
-  challenge_timeout: 30
-  max_games: 2            # 2 motorlu sistemin ana sınırı
+  challenge_interval: 60  # 10 saniyede bir yeni kurban ara
+  challenge_timeout: 15
+  max_games: 2            # Kalite için tek maç odaklı
   
-  # --- ELO KORUMA FİLTRESİ ---
-  opponent_min_rating: 2000      # 2735 puandasın, alt seviyeyle puan kaybetme riskini sıfırlıyoruz
-  opponent_max_rating: 4000      # En üst seviyedeki devleri hedefliyoruz
-  opponent_rating_difference: 700 
+  opponent_min_rating: 1500      
+  opponent_max_rating: 4000      
+  opponent_rating_difference: 1500 
 
   time_controls:
-    - "1+0"  # Çok Sık
-    - "1+1"
-    - "2+1"
-    - "3+0"  # Sık
-    - "3+2"
+    - "0.25+0"
+    - "0.5+0"             
+    - "1+0"               
+    - "3+0"
     - "5+0"
-    - "5+2"
-    - "10+0" # Nadir (Rapid)
-    - "10+2"
-    - "30+0" # En Nadir (Klasik)
+    - "10+0"
+    - "15+10"
+    - "30+0"              # Artık klasik maçlara da kendi meydan okuyacak
     
   challenge_bots: true
-  challenge_humans: false
+  challenge_humans: false  
   selection: "random"

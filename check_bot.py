@@ -5,7 +5,7 @@ import importlib.util
 import time
 
 def run_diagnostic():
-    print("🛠️ Oxydan V4 Pre-Flight Diagnostics...")
+    print("🛠️ Oxybullet v1 Pre-Flight Diagnostics...")
     
     # 1. Dosya Yollarını Tanımla
     main_script = "lichess-bot.py"
@@ -34,7 +34,7 @@ def run_diagnostic():
 
         # 4. Motor Havuzu Başlatma Testi (Düşük Hash ile)
         # UCI ayarlarını V4'ün beklediği formatta gönderiyoruz
-        bot = OxydanAegisV4(exe_path, uci_options={"Hash": 16, "Threads": 1})
+        bot = OxydanAegisV4(exe_path, uci_options={"Hash": 16, "Threads": 2})
         board = chess.Board()
         
         # 5. Hamle Üretme Testi

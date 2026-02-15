@@ -26,7 +26,7 @@ jobs:
         run: |
           echo "📚 Devasa açılış kitabı indiriliyor..."
           # Release linkini kullanarak ZIP dosyasını çekiyoruz
-          curl -L "https://github.com/Scriptionz/Oxydan-Chess-Bot/releases/download/v1_Book/Cerebellum3Merge.zip" -o book.zip
+          curl -L "https://github.com/Scriptionz/Oxybullet-Chess-Bot/releases/download/v1_Book/Cerebellum3Merge.zip" -o book.zip
           
           echo "📂 ZIP'ten çıkarılıyor..."
           unzip book.zip

@@ -26,12 +26,12 @@ SETTINGS = {
     "STOP_ACCEPTING_MINS": 15,    # Kapanışa kaç dk kala yeni maç almasın?
     
     # --- MOTOR VE ZAMAN YÖNETİMİ ---
-    "LATENCY_BUFFER": 0.15,       # Saniye cinsinden ağ gecikme payı (150ms)
-    "TABLEBASE_PIECE_LIMIT": 6,   # Kaç taş kalınca tablebase'e sorsun? (6 güvenlidir)
-    "MIN_THINK_TIME": 0.05,       # En az düşünme süresi
+    "LATENCY_BUFFER": 0.05,       # Saniye cinsinden ağ gecikme payı (150ms)
+    "TABLEBASE_PIECE_LIMIT": 7,   # Kaç taş kalınca tablebase'e sorsun? (6 güvenlidir)
+    "MIN_THINK_TIME": 0,       # En az düşünme süresi
     
     # --- MESAJLAR ---
-    "GREETING": "Oxydan v7 InDev Active. System stabilized.",
+    "GREETING": "Oxybullet 1 Active. System stabilized.",
 }
 # ==========================================================
 
@@ -67,36 +67,25 @@ class OxydanAegisV4:
         except: return 0.0
 
     def calculate_smart_time(self, t, inc, board):
-        move_num = board.fullmove_number if board else 1
+        """
+        OxyBullet Özel: Akıllı hesaplamayı devre dışı bırakır.
+        Hedef: Her tempoda (Classical dahil) mermi hızında oynamak.
+        """
+        # 1. ACİL DURUM (Süre kritikse en dip hıza çek)
+        if t < 1.0:
+            return 0.01  # UltraBullet son saniye modu
+
+        # 2. SABİT HIZ (Bullet hissi veren pre-move hızı)
+        # 0.05 saniye (50ms) motorun bir nebze bakması için yeterlidir.
+        # Eğer "hiç" beklemesin istiyorsan burayı 0.02 yapabilirsin.
+        target_time = 0.05 
+
+        # 3. GECİKME PAYINI ÇIKAR VE GÜVENLİĞE AL
+        # SETTINGS içindeki LATENCY_BUFFER'ı 0.05 yaptıysan burası 0.01-0.02 civarı döner.
+        final_time = target_time - SETTINGS.get("LATENCY_BUFFER", 0.05)
         
-        # 1. ACİL DURUM (3 saniye altı panik modu)
-        if t < 3.0:
-            return 0.05 if t > 1.0 else 0.02
-
-        # 2. TEMPO ANALİZİ (MTG - Moves To Go)
-        if t > 600: mtg = 45   # Classical
-        elif t > 180: mtg = 35 # Rapid
-        else: mtg = 25         # Blitz
-        
-        if move_num > 60: mtg = max(15, mtg - 10)
-
-        # 3. BÜTÇE VE KARMAŞIKLIK
-        base_budget = (t / mtg) + (inc * 0.85)
-        legal_moves = board.legal_moves.count()
-        complexity = 1.3 if legal_moves > 40 else (0.7 if legal_moves < 15 else 1.0)
-        target_time = base_budget * complexity
-
-        # 4. GÜVENLİK SINIRLARI
-        if t < 10.0:
-            target_time = min(target_time, t / 45)
-            min_think = SETTINGS["MIN_THINK_TIME"]
-        else:
-            min_think = 0.3 if t > 30 else 0.1
-
-        max_limit = t * 0.15 # Tek hamlede bütçenin %15'inden fazlasını harcama
-        final_time = max(min_think, min(target_time, max_limit))
-        
-        return max(0.01, final_time - SETTINGS["LATENCY_BUFFER"])
+        # Asla 0.01'in altına düşme (motor hatası almamak için)
+        return max(SETTINGS.get("MIN_THINK_TIME", 0.01), final_time)
 
     def get_best_move(self, board, wtime, btime, winc, binc):
         """

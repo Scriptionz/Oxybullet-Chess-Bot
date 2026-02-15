@@ -26,7 +26,7 @@ SETTINGS = {
     "STOP_ACCEPTING_MINS": 15,    # Kapanışa kaç dk kala yeni maç almasın?
     
     # --- MOTOR VE ZAMAN YÖNETİMİ ---
-    "LATENCY_BUFFER": 0.05,       # Saniye cinsinden ağ gecikme payı (150ms)
+    "LATENCY_BUFFER": 0.03,       # Saniye cinsinden ağ gecikme payı (150ms)
     "TABLEBASE_PIECE_LIMIT": 7,   # Kaç taş kalınca tablebase'e sorsun? (6 güvenlidir)
     "MIN_THINK_TIME": 0,       # En az düşünme süresi
     
@@ -68,135 +68,78 @@ class OxydanAegisV4:
 
     def calculate_smart_time(self, t, inc, board):
         """
-        OxyBullet Özel: Akıllı hesaplamayı devre dışı bırakır.
-        Hedef: Her tempoda (Classical dahil) mermi hızında oynamak.
+        OxyBullet Özel: Her tempoda mermi hızında oynar.
         """
-        # 1. ACİL DURUM (Süre kritikse en dip hıza çek)
+        # 1. ACİL DURUM (Süre 1 saniyenin altındaysa pre-move hızı)
         if t < 1.0:
-            return 0.01  # UltraBullet son saniye modu
+            return 0.005 
 
-        # 2. SABİT HIZ (Bullet hissi veren pre-move hızı)
-        # 0.05 saniye (50ms) motorun bir nebze bakması için yeterlidir.
-        # Eğer "hiç" beklemesin istiyorsan burayı 0.02 yapabilirsin.
-        target_time = 0.05 
+        # 2. HEDEF HIZ (0.06 saniye ideal bir 'bak-ve-oyna' süresidir)
+        target_time = 0.06 
 
-        # 3. GECİKME PAYINI ÇIKAR VE GÜVENLİĞE AL
-        # SETTINGS içindeki LATENCY_BUFFER'ı 0.05 yaptıysan burası 0.01-0.02 civarı döner.
-        final_time = target_time - SETTINGS.get("LATENCY_BUFFER", 0.05)
+        # 3. GECİKME PAYINI ÇIKAR (LATENCY_BUFFER 0.04 - 0.05 civarı olmalı)
+        buffer = SETTINGS.get("LATENCY_BUFFER", 0.04)
+        final_time = target_time - buffer
         
-        # Asla 0.01'in altına düşme (motor hatası almamak için)
+        # Asla 0.01'in altına düşme (Motorun hata vermemesi için kilit nokta)
         return max(SETTINGS.get("MIN_THINK_TIME", 0.01), final_time)
 
     def get_best_move(self, board, wtime, btime, winc, binc):
         """
-        Oxydan Bot Hamle Karar Mekanizması:
-        1. Cerebellum Book (.bin) -> Açılış
-        2. Syzygy API -> Oyun Sonu (<= 6 taş)
-        3. Ethereal Engine -> Orta Oyun
+        Sırasıyla: Kitap -> Syzygy API -> Ethereal Engine
         """
-        
+        # --- 1. ADIM: AÇILIŞ KİTABI ---
         if os.path.exists(SETTINGS["BOOK_PATH"]):
             try:
                 with chess.polyglot.open_reader(SETTINGS["BOOK_PATH"]) as reader:
                     best_entry = None
-                    # Tahtadaki konum için tüm hamleleri tara, en yüksek ağırlıklıyı seç
                     for entry in reader.find_all(board):
                         if best_entry is None or entry.weight > best_entry.weight:
                             best_entry = entry
-                    
                     if best_entry:
-                        print(f"📖 Cerebellum Kitap Hamlesi: {best_entry.move} (W: {best_entry.weight})", flush=True)
+                        print(f"📖 Kitap: {best_entry.move}", flush=True)
                         return best_entry.move
             except Exception as e:
-                print(f"⚠️ Kitap okunurken hata: {e}", flush=True)
+                print(f"⚠️ Kitap Hatası: {e}", flush=True)
 
-        # --- 2. ADIM: AKILLI SYZYGY TABLEBASE (Oyun Sonu) ---
-        try:
-            # Sıradaki oyuncunun kalan süresini al (milisaniyeden saniyeye çevir)
-            current_time_ms = wtime if board.turn == chess.WHITE else btime
-            current_time_sec = self.to_seconds(current_time_ms)
-            
-            # Strateji: 30 saniyeden fazla süre varsa 7 taş, azsa 6 taş sorgula
-            syzygy_limit = 7 if current_time_sec > 30 else 6
-            
-            if len(board.piece_map()) <= syzygy_limit:
+        # --- 2. ADIM: SYZYGY TABLEBASE (Oyun Sonu) ---
+        piece_count = len(board.piece_map())
+        if piece_count <= SETTINGS.get("TABLEBASE_PIECE_LIMIT", 7):
+            try:
+                current_time_ms = wtime if board.turn == chess.WHITE else btime
+                current_time_sec = self.to_seconds(current_time_ms)
+                
+                # Süreye göre derinlik ve timeout ayarı
+                api_timeout = 0.4 if current_time_sec > 10 else 0.2
                 fen = board.fen().replace(" ", "_")
-                # Süre azaldıkça API'yi bekleme süresini (timeout) de kısaltıyoruz
-                api_timeout = 0.5 if current_time_sec > 10 else 0.3
                 
                 r = requests.get(f"https://tablebase.lichess.ovh/standard?fen={fen}", timeout=api_timeout)
-                
                 if r.status_code == 200:
                     data = r.json()
-                    if "moves" in data and len(data["moves"]) > 0:
-                        tb_move_uci = data["moves"][0]["uci"]
-                        print(f"🧩 Syzygy ({syzygy_limit}-Piece) Hamlesi: {tb_move_uci}", flush=True)
-                        return chess.Move.from_uci(tb_move_uci)
-        except Exception as e:
-            # API yavaşsa veya hata verirse vakit kaybetmeden motora pasla
-            print(f"⚠️ Syzygy atlandı (Hata veya Zaman Aşımı): {e}", flush=True)
+                    if data.get("moves"):
+                        tb_move = data["moves"][0]["uci"]
+                        print(f"🎯 Tablebase: {tb_move}", flush=True)
+                        return chess.Move.from_uci(tb_move)
+            except Exception as e:
+                print(f"⚠️ Syzygy Pas Geçildi: {e}", flush=True)
 
         # --- 3. ADIM: MOTOR HESAPLAMA (Ethereal) ---
-        # Eğer kitapta hamle yoksa veya oyun sonuna girilmemişse motor devreye girer
-        engine = self.engine_pool.get()
+        engine = self.engine_pool.get() # Havuzdan bir motor al
         try:
-            # Sıra kimdeyse onun süresini ve artışını (inc) al
             my_time = wtime if board.turn == chess.WHITE else btime
             my_inc = winc if board.turn == chess.WHITE else binc
             
-            # Daha önce tanımladığın akıllı zaman yönetimi fonksiyonu (calculate_smart_time)
-            # Eğer o fonksiyonun adını değiştirdiysen burayı da güncelle.
             think_time = self.calculate_smart_time(self.to_seconds(my_time), self.to_seconds(my_inc), board)
             
-            # Motoru belirtilen süre sınırıyla çalıştır
             result = engine.play(board, chess.engine.Limit(time=think_time))
-            
-            print(f"⚙️ Motor Hamlesi: {result.move} (Süre: {think_time:.2f}s)", flush=True)
+            print(f"⚙️ Motor: {result.move} ({think_time:.3f}s)", flush=True)
             return result.move
             
         except Exception as e:
-            print(f"🚨 Motor hatası: {e}", flush=True)
-            # Motor hata verirse bile botun çökmemesi için rastgele bir hamle döndür (acil durum)
-            return list(board.legal_moves)[0]
+            print(f"🚨 Motor Hatası: {e}", flush=True)
+            return next(iter(board.legal_moves)) # Çökmemek için ilk yasal hamle
         finally:
-            # Motoru havuza geri bırak
-            self.engine_pool.put(engine)
-
-        # 2. TABLEBASE (7 taş ve altı için online sorgu)
-        if len(board.piece_map()) <= SETTINGS.get("TABLEBASE_PIECE_LIMIT", 6):
-            try:
-                fen_tb = board.fen().replace(" ", "_")
-                r_tb = requests.get(f"https://tablebase.lichess.ovh/standard?fen={fen_tb}", timeout=0.5)
-                if r_tb.status_code == 200:
-                    data_tb = r_tb.json()
-                    if data_tb.get("moves"):
-                        print(f"🎯 Tablebase Hamlesi: {data_tb['moves'][0]['uci']}", flush=True)
-                        return chess.Move.from_uci(data_tb["moves"][0]["uci"])
-            except:
-                pass
-
-        # 3. MOTOR HESAPLAMA (Kitap bittiğinde veya API yanıt vermediğinde)
-        engine = self.engine_pool.get()
-        try:
-            my_time = wtime if board.turn == chess.WHITE else btime
-            my_inc = winc if board.turn == chess.WHITE else binc
-            
-            t_sec = self.to_seconds(my_time)
-            i_sec = self.to_seconds(my_inc)
-            
-            think_time = self.calculate_smart_time(t_sec, i_sec, board)
-            
-            # Motor hesaplama limiti
-            result = engine.play(board, chess.engine.Limit(time=think_time))
-            return result.move
-            
-        except Exception as e:
-            print(f"❌ Motor Hatası: {e}")
-            # Acil durum hamlesi (legal hamlelerden ilkini yap)
-            return next(iter(board.legal_moves)) if board.legal_moves else None
-        finally:
-            # Motoru her durumda havuza geri ver
-            self.engine_pool.put(engine)
+            self.engine_pool.put(engine) # Motoru mutlaka havuza geri koy
 
 def handle_game(client, game_id, bot, my_id):
     try:
@@ -272,20 +215,13 @@ def main():
 
     while True:
         try:
-            stop_signal = os.path.exists("STOP.txt")
-            elapsed = time.time() - start_time
-
-            # Kritik zaman kontrolü
-            if elapsed > SETTINGS["MAX_TOTAL_RUNTIME"]:
-                print("🛑 Toplam süre doldu. Kapanıyor.")
-                sys.exit(0)
-
+            # Stream başlatılıyor
             for event in client.bots.stream_incoming_events():
-                # Stream içindeyken periyodik kontroller
+                # 1. HER EVENTTE ZAMAN KONTROLÜ
                 cur_elapsed = time.time() - start_time
                 should_stop = os.path.exists("STOP.txt") or cur_elapsed > SETTINGS["MAX_TOTAL_RUNTIME"]
                 
-                # Yeni maç kabul etmeme sınırı (son 15 dk)
+                # Yeni maç kabul etme sınırı (Son 15 dk kala kapıları kapat)
                 close_to_end = cur_elapsed > (SETTINGS["MAX_TOTAL_RUNTIME"] - (SETTINGS["STOP_ACCEPTING_MINS"] * 60))
 
                 if event['type'] == 'challenge':
@@ -293,7 +229,10 @@ def main():
                     
                     if should_stop or close_to_end or len(active_games) >= SETTINGS["MAX_PARALLEL_GAMES"]:
                         client.challenges.decline(ch_id, reason='later')
-                        if should_stop and len(active_games) == 0: sys.exit(0)
+                        # Eğer her şey bittiyse ve süre dolduysa tamamen çık
+                        if should_stop and len(active_games) == 0: 
+                            print("🏁 Tüm maçlar bitti, sistem güvenli kapatıldı.")
+                            sys.exit(0)
                     else:
                         client.challenges.accept(ch_id)
 
@@ -306,10 +245,13 @@ def main():
                             args=(client, game_id, bot, my_id, active_games),
                             daemon=True
                         ).start()
+                
+                # Süre dolmuşsa ve bekleyen maç yoksa döngüden çık ve bitir
+                if should_stop and len(active_games) == 0:
+                    sys.exit(0)
 
         except Exception as e:
             if "429" in str(e):
-                print("🚨 Hız sınırı (429). Bekleniyor...")
                 time.sleep(60)
             else:
                 time.sleep(5)

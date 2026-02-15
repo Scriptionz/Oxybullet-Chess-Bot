@@ -12,15 +12,15 @@ SETTINGS = {
     "MAX_PARALLEL_GAMES": 2,     # Aynı anda kaç maç yapılsın? (GitHub için 1 önerilir)
     "MIN_RATING": 1500,          # Rakip minimum kaç elo olsun?
     "MAX_RATING": 4000,          # Rakip maksimum kaç elo olsun?
-    "SAFETY_LOCK_TIME": 60,      # Davet attıktan sonra kaç saniye dondurulsun? (Beton Fren)
+    "SAFETY_LOCK_TIME": 30,      # Davet attıktan sonra kaç saniye dondurulsun? (Beton Fren)
     "LOW_ELO_THRESHOLD": 2000,
     "STOP_FILE": "STOP.txt",     # Durdurma dosyası adı
-    "TIME_CONTROLS": ["1+0", "1+1", "2+1",                  # Bullet
+    "TIME_CONTROLS": ["0.25+0","0.5+0","1+0", "1+1", "2+1",                  # Bullet
         "3+0", "3+2", "5+0", "5+3",            # Blitz
         "10+0", "10+5", "15+10",               # Rapid
         "30+0"], # Rastgele seçilecek süreler
-    "POOL_REFRESH_SECONDS": 1800, # Bot listesi kaç saniyede bir güncellensin?
-    "BLACKLIST_MINUTES": 30      # Reddeden veya maç yapılan botu kaç dk engelle?
+    "POOL_REFRESH_SECONDS": 900, # Bot listesi kaç saniyede bir güncellensin?
+    "BLACKLIST_MINUTES": 15      # Reddeden veya maç yapılan botu kaç dk engelle?
 }
 # ==========================================================
 
@@ -110,19 +110,17 @@ class Matchmaker:
 
     def start(self):
         if not self.enabled: return
-        print(f"🚀 Oxydan Matchmaker Aktif. (Max Slot: {SETTINGS['MAX_PARALLEL_GAMES']})")
+        print(f"🚀 OxyBullet Matchmaker Aktif. (Max Slot: {SETTINGS['MAX_PARALLEL_GAMES']})")
 
         while True:
-            # --- 1. AKILLI STOP KONTROLÜ (Düzeltildi) ---
+            # --- 1. AKILLI STOP KONTROLÜ ---
             if self._is_stop_triggered():
                 active_count = len(self.active_games)
                 if active_count == 0:
-                    print(f"🏁 Maç kalmadı. {SETTINGS['STOP_FILE']} gereği sistem tamamen kapatılıyor.")
-                    os._exit(0)  # Süreci kesin olarak bitirir
+                    os._exit(0)
                 else:
-                    print(f"⏳ STOP algılandı! Mevcut {active_count} maçın bitmesi bekleniyor... Yeni davet atılmayacak.")
                     time.sleep(30)
-                    continue # Yeni maç arama adımını atla, döngü başına dön
+                    continue
 
             # --- 2. Maç Sayısı Kontrolü ---
             if len(self.active_games) >= SETTINGS["MAX_PARALLEL_GAMES"]:
@@ -136,20 +134,32 @@ class Matchmaker:
                     time.sleep(20)
                     continue
 
-                # --- 4. ELO BAZLI STRATEJİ (2000 ELO Altı Düzenlemesi) ---
+                # --- 4. ELO VE ZAR TABANLI STRATEJİ ---
                 target_rating = self._get_bot_rating(target)
                 
                 if target_rating < SETTINGS["LOW_ELO_THRESHOLD"]:
-                    # 2000 Altı: Her zaman PUANSIZ ve Hızlı Tempo
                     is_rated = False
-                    tc = random.choice(["1+0", "1+1", "2+1", "3+0", "5+0"])
-                    print(f"🎯 Düşük ELO ({target_rating}): Puansız ve Hızlı Tempo seçildi.")
+                    tc = random.choice(["0.5+0", "1+0", "2+1"]) # Düşük ELO'da hep hızlı
                 else:
-                    # 2000 Üstü: Normal Ayarlar
                     is_rated = SETTINGS["RATED_MODE"]
-                    tc = random.choice(SETTINGS["TIME_CONTROLS"])
+                    
+                    # 🎲 ZAR SİSTEMİ BURADA DEVREYE GİRİYOR
+                    zar = random.randint(1, 100)
+                    
+                    if zar <= 70:
+                        # %70 İhtimal: Saf Bullet/Ultra (OxyBullet'ın ana işi)
+                        tc = random.choice(["0.25+0","0.5+0", "1+0", "1+1"])
+                        print(f"🎲 Zar {zar}: Hız modu seçildi.")
+                    elif zar <= 95:
+                        # %25 İhtimal: Blitz
+                        tc = random.choice(["3+0", "3+2", "5+0"])
+                        print(f"🎲 Zar {zar}: Blitz modu seçildi.")
+                    else:
+                        # %5 İhtimal: Nadir Klasik (Beklediğin 30+0 burada)
+                        tc = "30+0"
+                        print(f"🎲 Zar {zar}: NADİR! Klasik 30+0 seçildi.")
 
-                t_limit, t_inc = map(int, tc.split('+'))
+                t_limit_raw, t_inc = map(float, tc.split('+'))
 
                 # --- 5. Meydan Okuma ---
                 print(f"[Matchmaker] -> {target} ({tc}) Davet ediliyor... (Rated: {is_rated})")
@@ -158,8 +168,8 @@ class Matchmaker:
                 self.client.challenges.create(
                     username=target,
                     rated=is_rated,
-                    clock_limit=t_limit * 60,
-                    clock_increment=t_inc
+                    clock_limit=int(t_limit_raw * 60),  # int eklendi ve isim düzeltildi
+                    clock_increment=int(t_inc)         # int eklendi
                 )
                 
                 # --- 6. Güvenlik Kilidi ---

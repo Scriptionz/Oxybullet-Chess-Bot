@@ -110,84 +110,81 @@ class Matchmaker:
 
     def start(self):
         if not self.enabled: return
-        print(f"🚀 OxyBullet Matchmaker Aktif. (Max Slot: {SETTINGS['MAX_PARALLEL_GAMES']})")
+        print(f"🚀 OxyBullet Matchmaker Aktif. Protokol Kontrolü Devrede.")
 
         while True:
             # --- 1. AKILLI STOP KONTROLÜ ---
             if self._is_stop_triggered():
-                active_count = len(self.active_games)
-                if active_count == 0:
-                    os._exit(0)
-                else:
-                    time.sleep(30)
-                    continue
+                # Aktif maç kalmadıysa os._exit(0) zaten _is_stop_triggered içinde çağrılıyor
+                time.sleep(30)
+                continue
 
-            # --- 2. Maç Sayısı Kontrolü ---
+            # --- 2. MAÇ SAYISI KONTROLÜ ---
             if len(self.active_games) >= SETTINGS["MAX_PARALLEL_GAMES"]:
                 time.sleep(15)
                 continue
 
             try:
-                # --- 3. Rakip Bulma ---
+                # --- 3. RAKİP BULMA ---
                 target = self._find_suitable_target()
                 if not target:
                     time.sleep(20)
                     continue
 
-                # --- 4. ELO VE ZAR TABANLI STRATEJİ ---
+                # --- 4. ELO TABANLI PROTOKOL STRATEJİSİ ---
                 target_rating = self._get_bot_rating(target)
                 
-                if target_rating < SETTINGS["LOW_ELO_THRESHOLD"]:
-                    is_rated = False
-                    tc = random.choice(["0.5+0", "1+0", "2+1"]) # Düşük ELO'da hep hızlı
-                else:
+                # DURUM A: MASTERS (2000+) 
+                # Protokol: Puanlı (Rated) olabilir, 30+0'a kadar her süre kabul.
+                if target_rating >= 2000:
                     is_rated = SETTINGS["RATED_MODE"]
-                    
-                    # 🎲 ZAR SİSTEMİ BURADA DEVREYE GİRİYOR
                     zar = random.randint(1, 100)
-                    
                     if zar <= 70:
-                        # %70 İhtimal: Saf Bullet/Ultra (OxyBullet'ın ana işi)
-                        tc = random.choice(["0.25+0","0.5+0", "1+0", "1+1"])
-                        print(f"🎲 Zar {zar}: Hız modu seçildi.")
+                        tc = random.choice(["0.5+0", "1+0", "1+1", "2+1"]) # Bullet odaklı
                     elif zar <= 95:
-                        # %25 İhtimal: Blitz
-                        tc = random.choice(["3+0", "3+2", "5+0"])
-                        print(f"🎲 Zar {zar}: Blitz modu seçildi.")
+                        tc = random.choice(["3+0", "5+0", "10+0"]) # Blitz/Rapid
                     else:
-                        # %5 İhtimal: Nadir Klasik (Beklediğin 30+0 burada)
-                        tc = "30+0"
-                        print(f"🎲 Zar {zar}: NADİR! Klasik 30+0 seçildi.")
+                        tc = "30+0" # Nadir klasik
+                    print(f"🎯 Masters Rakip: {target} ({target_rating}) | Süre: {tc} | Rated: {is_rated}")
 
+                # DURUM B: CHALLENGERS (1500-2000) 
+                # Protokol: KESİNLİKLE PUANSIZ (Casual), Max 5+0 süre.
+                elif 1500 <= target_rating < 2000:
+                    is_rated = False
+                    tc = random.choice(["0.5+0", "1+0", "3+0", "5+0"]) # 5+0 sınırını aşmaz
+                    print(f"🛡️ Challenger Rakip: {target} ({target_rating}) | Süre: {tc} | Rated: KESİNLİKLE CASUAL")
+
+                # DURUM C: 1500 ALTI 
+                # Protokol: Asla maç kabul etme/atma.
+                else:
+                    print(f"🚫 Protokol Dışı: {target} ({target_rating}) Pas geçiliyor.")
+                    self.blacklist[target] = datetime.now() + timedelta(hours=24)
+                    continue
+
+                # --- 5. MEYDAN OKUMA OLUŞTURMA ---
                 t_limit_raw, t_inc = map(float, tc.split('+'))
 
-                # --- 5. Meydan Okuma ---
-                print(f"[Matchmaker] -> {target} ({tc}) Davet ediliyor... (Rated: {is_rated})")
                 self.blacklist[target] = datetime.now() + timedelta(minutes=SETTINGS["BLACKLIST_MINUTES"])
                 
                 self.client.challenges.create(
                     username=target,
                     rated=is_rated,
-                    clock_limit=int(t_limit_raw * 60),  # int eklendi ve isim düzeltildi
-                    clock_increment=int(t_inc)         # int eklendi
+                    clock_limit=int(t_limit_raw * 60),
+                    clock_increment=int(t_inc)
                 )
                 
-                # --- 6. Güvenlik Kilidi ---
-                print(f"[Matchmaker] ✅ Davet gitti. {SETTINGS['SAFETY_LOCK_TIME']}sn GÜVENLİK KİLİDİ aktif.")
-                time.sleep(SETTINGS["SAFETY_LOCK_TIME"]) 
+                print(f"[Matchmaker] ✅ Davet gönderildi. {SETTINGS['SAFETY_LOCK_TIME']}sn güvenlik beklemesi...")
+                time.sleep(SETTINGS['SAFETY_LOCK_TIME']) 
 
             except Exception as e:
                 if "429" in str(e):
-                    print(f"⚠️ [Matchmaker] Lichess Rate Limit uyarısı! {self.wait_timeout} saniye boyunca tüm istekler durduruluyor...")
+                    print(f"⚠️ Rate Limit! {self.wait_timeout}sn duraklatıldı.")
                     time.sleep(self.wait_timeout)
-                    
-                    # Hata devam ederse bir sonraki bekleme süresini iki katına çıkar (Maksimum 1 saat olsun)
-                    self.wait_timeout = min(self.wait_timeout * 2, 3600) 
+                    self.wait_timeout = min(self.wait_timeout * 2, 3600)
                 else:
                     print(f"[Matchmaker] Hata: {e}")
-                    # Normal hatalarda bekleme süresini sıfırlama, ama 30 saniye bekle
                     time.sleep(30)
-                    
                 continue
+            
+            # Başarılı döngü sonunda bekleme süresini sıfırla
             self.wait_timeout = 120
-

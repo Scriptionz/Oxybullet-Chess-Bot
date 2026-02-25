@@ -110,19 +110,24 @@ class OxydanAegisV4:
 def is_challenge_acceptable(challenge):
     """
     Oxybullet Protokol Denetleyici (Fedai Mekanizması)
+    Yazışmalı ve Süresiz maç engellemesi eklendi.
     """
     challenger = challenge.get('challenger')
     if not challenger: return False, "Generic challenge"
+
+    # --- YAZIŞMALI/SÜRESİZ ENGELİ (YENİ) ---
+    speed = challenge.get('speed')
+    time_control = challenge.get('timeControl', {})
+    limit = time_control.get('limit') # None ise süresizdir
+
+    if speed in ['correspondence', 'unlimited'] or limit is None:
+        return False, "Void Protocol: Correspondence/Unlimited games are not supported"
+    # ---------------------------------------
 
     user_id = challenger['id']
     rating = challenger.get('rating', 0)
     is_bot = challenger.get('title') == 'BOT'
     rated = challenge.get('rated', False)
-    
-    # Zaman Kontrolü (Lichess saniye cinsinden gönderir)
-    time_control = challenge.get('timeControl', {})
-    limit = time_control.get('limit', 0)
-    increment = time_control.get('increment', 0)
     
     # 1. Anti-Farming: Aynı rakiple çok fazla oynama
     if opponent_tracker.get(user_id, 0) >= MAX_GAMES_PER_OPPONENT:
@@ -130,13 +135,13 @@ def is_challenge_acceptable(challenge):
 
     # 2. BOT Protokolü
     if is_bot:
-        # DURUM A: MASTERS (2000+) - Puanlı veya Puansız her şeyi kabul et (Max 30dk)
+        # DURUM A: MASTERS (2000+)
         if rating >= 2000:
             if limit <= 1800: 
                 return True, "Accepted Masters Bot"
             return False, "Masters time limit exceeded (max 30m)"
 
-        # DURUM B: CHALLENGERS (1500 - 2000) - SADECE PUANSIZ (Casual) ve HIZLI (Max 5dk)
+        # DURUM B: CHALLENGERS (1500 - 2000)
         elif 1500 <= rating < 2000:
             if rated: 
                 return False, "Challengers must play Casual (Rating Protection)"
@@ -144,15 +149,12 @@ def is_challenge_acceptable(challenge):
                 return True, "Accepted Casual Challenger"
             return False, "Challenger time limit exceeded (max 5m)"
         
-        # 1500 Altı botları direkt engelle
         return False, "Bot rating too low for protocol"
 
     # 3. İnsan (Human) Protokolü
     else:
-        # İnsanlarla ASLA puanlı oynama (Hileci riskine karşı)
         if rated: 
             return False, "Humans must play Casual"
-        # Max 10+0
         if limit <= 600: 
             return True, "Accepted Casual Human"
         return False, "Human time limit exceeded (max 10+0)"

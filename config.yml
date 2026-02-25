@@ -17,7 +17,7 @@ engine:
 
 # --- SOSYAL MESAJLAR ---
 chat:
-  welcome: "🏎️ OxyBullet Speed Demon! Playing everything like Bullet. Don't blink!"
+  welcome: "🏎️ Oxybullet 2 Speed Demon! Playing everything like Bullet. Don't blink!"
   goodbye: "GG! Still too fast, even in classical? ;)"
 
 # --- TÜM ZAMAN TEMPOLARI AÇIK ---
@@ -32,7 +32,7 @@ challenge_policy:
     - rapid               # 10dk+
     - classical           # 30dk+
   min_time: 15            # Minimum HyperBullet
-  max_time: 10800         # Maksimum 3 saat (Tüm zamanlar dahil)
+  max_time: 2000         # Maksimum 3 saat (Tüm zamanlar dahil)
 
 # --- SÜREKLİ MAÇ ARAYIŞI ---
 matchmaking:
@@ -43,7 +43,7 @@ matchmaking:
   
   opponent_min_rating: 1500      
   opponent_max_rating: 4000      
-  opponent_rating_difference: 1500 
+  opponent_rating_difference: 700 
 
   time_controls:
     - "0.25+0"

@@ -8,6 +8,7 @@ import chess.polyglot
 import threading
 import yaml
 import requests
+import random
 import queue
 from datetime import timedelta
 from matchmaking import Matchmaker

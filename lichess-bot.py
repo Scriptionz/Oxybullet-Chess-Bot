@@ -24,7 +24,7 @@ SETTINGS = {
     "MAX_TOTAL_RUNTIME": 21300,
     "STOP_ACCEPTING_MINS": 15,
     
-    "LATENCY_BUFFER": 0.05,        # 0.03'ten 0.05'e çekildi (Daha güvenli)
+    "LATENCY_BUFFER": 0.03,
     "TABLEBASE_PIECE_LIMIT": 7,
     "MIN_THINK_TIME": 0,
     
@@ -49,7 +49,7 @@ class OxydanAegisV4:
             for i in range(pool_size):
                 eng = chess.engine.SimpleEngine.popen_uci(self.exe_path, timeout=30)
                 # DÜZELTME: MoveOverhead (Bitişik yazım)
-                eng.configure({"MoveOverhead": 300}) 
+                eng.configure({"MoveOverhead": 50}) 
                 if uci_options:
                     for opt, val in uci_options.items():
                         try: eng.configure({opt: val})
@@ -108,16 +108,20 @@ class OxydanAegisV4:
 
 def is_challenge_acceptable(challenge):
     """
-    Kullanıcı Protokollerini Denetleyen Fedai Mekanizması
+    Oxybullet Protokol Denetleyici (Fedai Mekanizması)
     """
-    challenger = challenge['challenger']
+    challenger = challenge.get('challenger')
+    if not challenger: return False, "Generic challenge"
+
     user_id = challenger['id']
     rating = challenger.get('rating', 0)
     is_bot = challenger.get('title') == 'BOT'
-    rated = challenge['rated']
+    rated = challenge.get('rated', False)
     
-    # Zaman Kontrolü (Saniye cinsinden limit)
-    limit = challenge['timeControl'].get('limit', 0)
+    # Zaman Kontrolü (Lichess saniye cinsinden gönderir)
+    time_control = challenge.get('timeControl', {})
+    limit = time_control.get('limit', 0)
+    increment = time_control.get('increment', 0)
     
     # 1. Anti-Farming: Aynı rakiple çok fazla oynama
     if opponent_tracker.get(user_id, 0) >= MAX_GAMES_PER_OPPONENT:
@@ -125,16 +129,31 @@ def is_challenge_acceptable(challenge):
 
     # 2. BOT Protokolü
     if is_bot:
-        if rating >= 2000: # Masters
-            if limit <= 1800: return True, "Accepted Masters Bot"
-        elif 1500 <= rating < 2000: # Challengers
-            if limit <= 300: return True, "Accepted Challenger Bot"
-        return False, "Bot rating/time out of protocol"
+        # DURUM A: MASTERS (2000+) - Puanlı veya Puansız her şeyi kabul et (Max 30dk)
+        if rating >= 2000:
+            if limit <= 1800: 
+                return True, "Accepted Masters Bot"
+            return False, "Masters time limit exceeded (max 30m)"
+
+        # DURUM B: CHALLENGERS (1500 - 2000) - SADECE PUANSIZ (Casual) ve HIZLI (Max 5dk)
+        elif 1500 <= rating < 2000:
+            if rated: 
+                return False, "Challengers must play Casual (Rating Protection)"
+            if limit <= 300: 
+                return True, "Accepted Casual Challenger"
+            return False, "Challenger time limit exceeded (max 5m)"
+        
+        # 1500 Altı botları direkt engelle
+        return False, "Bot rating too low for protocol"
 
     # 3. İnsan (Human) Protokolü
     else:
-        if rated: return False, "Humans must play Casual"
-        if limit <= 600: return True, "Accepted Casual Human"
+        # İnsanlarla ASLA puanlı oynama (Hileci riskine karşı)
+        if rated: 
+            return False, "Humans must play Casual"
+        # Max 10+0
+        if limit <= 600: 
+            return True, "Accepted Casual Human"
         return False, "Human time limit exceeded (max 10+0)"
 
     return False, "Unknown protocol violation"

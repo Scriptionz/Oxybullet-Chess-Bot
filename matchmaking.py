@@ -15,7 +15,7 @@ SETTINGS = {
     "SAFETY_LOCK_TIME": 30,      # Davet attıktan sonra kaç saniye dondurulsun? (Beton Fren)
     "LOW_ELO_THRESHOLD": 2000,
     "STOP_FILE": "STOP.txt",     # Durdurma dosyası adı
-    "TIME_CONTROLS": ["0.25+0","0.5+0","1+0", "1+1", "2+1",                  # Bullet
+    "TIME_CONTROLS": ["0.5+0","1+0", "1+1", "2+1",                  # Bullet
         "3+0", "3+2", "5+0", "5+3",            # Blitz
         "10+0", "10+5", "15+10",               # Rapid
         "30+0"], # Rastgele seçilecek süreler
@@ -110,14 +110,17 @@ class Matchmaker:
 
     def start(self):
         if not self.enabled: return
-        print(f"🚀 OxyBullet Matchmaker Aktif. Protokol Kontrolü Devrede.")
+        print(f"🚀 OxyBullet Matchmaker Aktif. (Max Slot: {SETTINGS['MAX_PARALLEL_GAMES']})")
 
         while True:
             # --- 1. AKILLI STOP KONTROLÜ ---
             if self._is_stop_triggered():
-                # Aktif maç kalmadıysa os._exit(0) zaten _is_stop_triggered içinde çağrılıyor
-                time.sleep(30)
-                continue
+                active_count = len(self.active_games)
+                if active_count == 0:
+                    os._exit(0)
+                else:
+                    time.sleep(30)
+                    continue
 
             # --- 2. MAÇ SAYISI KONTROLÜ ---
             if len(self.active_games) >= SETTINGS["MAX_PARALLEL_GAMES"]:
@@ -131,60 +134,65 @@ class Matchmaker:
                     time.sleep(20)
                     continue
 
-                # --- 4. ELO TABANLI PROTOKOL STRATEJİSİ ---
+                # --- 4. PROTOKOL TABANLI STRATEJİ (ARIZALAR GİDERİLDİ) ---
                 target_rating = self._get_bot_rating(target)
                 
-                # DURUM A: MASTERS (2000+) 
-                # Protokol: Puanlı (Rated) olabilir, 30+0'a kadar her süre kabul.
-                if target_rating >= 2000:
+                # DURUM A: MASTERS (2000+) - Protokol: Puanlı ve her süre serbest
+                if target_rating >= SETTINGS["LOW_ELO_THRESHOLD"]:
                     is_rated = SETTINGS["RATED_MODE"]
                     zar = random.randint(1, 100)
+                    
                     if zar <= 70:
-                        tc = random.choice(["0.5+0", "1+0", "1+1", "2+1"]) # Bullet odaklı
+                        # %70 Bullet/Ultra
+                        tc = random.choice(["0.5+0", "1+0", "1+1"])
+                        print(f"🎲 Zar {zar}: Masters için Hız modu seçildi.")
                     elif zar <= 95:
-                        tc = random.choice(["3+0", "5+0", "10+0"]) # Blitz/Rapid
+                        # %25 Blitz
+                        tc = random.choice(["3+0", "3+2", "5+0"])
+                        print(f"🎲 Zar {zar}: Masters için Blitz modu seçildi.")
                     else:
-                        tc = "30+0" # Nadir klasik
-                    print(f"🎯 Masters Rakip: {target} ({target_rating}) | Süre: {tc} | Rated: {is_rated}")
+                        # %5 Nadir Klasik
+                        tc = "30+0"
+                        print(f"🎲 Zar {zar}: NADİR! Masters için 30+0 seçildi.")
 
-                # DURUM B: CHALLENGERS (1500-2000) 
-                # Protokol: KESİNLİKLE PUANSIZ (Casual), Max 5+0 süre.
-                elif 1500 <= target_rating < 2000:
+                # DURUM B: CHALLENGERS (1500 - 2000) - Protokol: Kesinlikle PUANSIZ ve Max 5+0
+                elif SETTINGS["MIN_RATING"] <= target_rating < SETTINGS["LOW_ELO_THRESHOLD"]:
                     is_rated = False
-                    tc = random.choice(["0.5+0", "1+0", "3+0", "5+0"]) # 5+0 sınırını aşmaz
-                    print(f"🛡️ Challenger Rakip: {target} ({target_rating}) | Süre: {tc} | Rated: KESİNLİKLE CASUAL")
+                    # 5+0 üzerindeki süreleri bu gruptan eledik
+                    tc = random.choice(["0.5+0", "1+0", "3+0", "5+0"])
+                    print(f"🛡️ Challenger Protokolü: {target} için PUANSIZ ve HIZLI mod seçildi.")
 
-                # DURUM C: 1500 ALTI 
-                # Protokol: Asla maç kabul etme/atma.
+                # DURUM C: PROTOKOL DIŞI
                 else:
-                    print(f"🚫 Protokol Dışı: {target} ({target_rating}) Pas geçiliyor.")
                     self.blacklist[target] = datetime.now() + timedelta(hours=24)
                     continue
 
                 # --- 5. MEYDAN OKUMA OLUŞTURMA ---
+                # tc formatı "10+5" gibi olduğu için güvenli split
                 t_limit_raw, t_inc = map(float, tc.split('+'))
 
+                print(f"[Matchmaker] -> {target} ({tc}) Davet ediliyor... (Rated: {is_rated})")
                 self.blacklist[target] = datetime.now() + timedelta(minutes=SETTINGS["BLACKLIST_MINUTES"])
                 
                 self.client.challenges.create(
                     username=target,
                     rated=is_rated,
-                    clock_limit=int(t_limit_raw * 60),
-                    clock_increment=int(t_inc)
+                    clock_limit=int(t_limit_raw * 60),  # Dakikayı saniyeye çevirir
+                    clock_increment=int(t_inc)          # Artış saniyesi
                 )
                 
-                print(f"[Matchmaker] ✅ Davet gönderildi. {SETTINGS['SAFETY_LOCK_TIME']}sn güvenlik beklemesi...")
-                time.sleep(SETTINGS['SAFETY_LOCK_TIME']) 
+                # --- 6. GÜVENLİK KİLİDİ ---
+                print(f"[Matchmaker] ✅ Davet gitti. {SETTINGS['SAFETY_LOCK_TIME']}sn GÜVENLİK KİLİDİ aktif.")
+                time.sleep(SETTINGS["SAFETY_LOCK_TIME"]) 
 
             except Exception as e:
                 if "429" in str(e):
-                    print(f"⚠️ Rate Limit! {self.wait_timeout}sn duraklatıldı.")
+                    print(f"⚠️ [Matchmaker] Lichess Rate Limit! {self.wait_timeout} saniye duraklatıldı...")
                     time.sleep(self.wait_timeout)
-                    self.wait_timeout = min(self.wait_timeout * 2, 3600)
+                    self.wait_timeout = min(self.wait_timeout * 2, 3600) 
                 else:
                     print(f"[Matchmaker] Hata: {e}")
                     time.sleep(30)
                 continue
             
-            # Başarılı döngü sonunda bekleme süresini sıfırla
             self.wait_timeout = 120

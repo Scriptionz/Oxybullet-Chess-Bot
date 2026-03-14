@@ -146,10 +146,12 @@ class Matchmaker:
                         # %70 Bullet/Ultra
                         tc = random.choice(["0.5+0", "1+0", "1+1"])
                         print(f"🎲 Zar {zar}: Masters için Hız modu seçildi.")
-                    elif zar <= 95:
+                    elif zar <= 80:
                         # %25 Blitz
                         tc = random.choice(["3+0", "3+2", "5+0"])
                         print(f"🎲 Zar {zar}: Masters için Blitz modu seçildi.")
+                    elif zar <= 15:
+                        tc = random.choice(["10+0", "10+2", "10+3", "15+10")
                     else:
                         # %5 Nadir Klasik
                         tc = "30+0"

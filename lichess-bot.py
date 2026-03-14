@@ -29,7 +29,7 @@ SETTINGS = {
     "TABLEBASE_PIECE_LIMIT": 7,
     "MIN_THINK_TIME": 0,
     
-    "GREETING": "Oxybullet 2 On The Board!",
+    "GREETING": "Oxybullet 3 On The Board!",
 }
 
 # Aynı rakiple kaç maç yapılabileceği sınırı
@@ -220,7 +220,7 @@ def main():
         mm = Matchmaker(client, config, active_games) 
         threading.Thread(target=mm.start, daemon=True).start()
 
-    print(f"🔥 Oxybullet 2 Hazır. ID: {my_id}", flush=True)
+    print(f"🔥 Oxybullet 3 Hazır. ID: {my_id}", flush=True)
 
     # ANA DÖNGÜ: Bağlantı kopsa da tazeleyerek devam eder
     while True:

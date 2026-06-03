@@ -7,7 +7,8 @@ concurrency:
 on:
   workflow_dispatch: # Manuel başlatma
   schedule:
-    - cron: '0 */6 * * *' # Her 6 saatte bir otomatik başlar
+    # ÇÖZÜM: Her 5 saatte bir çalışacak şekilde güncellendi (00:00, 05:00, 10:00 vs.)
+    - cron: '0 */5 * * *' 
 
 jobs:
   run-bot:
@@ -15,7 +16,6 @@ jobs:
     steps:
       - name: Kodlari Cek
         uses: actions/checkout@v4
-        # LFS: true satırını sildik, artık ihtiyacımız yok
 
       - name: Python Kurulumu
         uses: actions/setup-python@v4
@@ -25,15 +25,12 @@ jobs:
       - name: Cerebellum Kitabini Indir ve Kur
         run: |
           echo "📚 Devasa açılış kitabı indiriliyor..."
-          # Doğrudan .bin dosyasını indiriyoruz (ZIP ile uğraşmıyoruz)
           curl -L "https://github.com/Scriptionz/Oxybullet-Chess-Bot/releases/download/v1_Book/Cerebellum3Merge.bin" -o book.bin
           
-          # Dosyanın gerçekten inip inmediğini kontrol et
           if [ ! -f book.bin ]; then
             echo "❌ HATA: Kitap dosyası indirilemedi! Linki kontrol edin."
             exit 1
           fi
-
           echo "✅ Kitap hazır: $(ls -lh book.bin)"
 
       - name: Motoru Derle
@@ -59,8 +56,5 @@ jobs:
         env:
           LICHESS_TOKEN: ${{ secrets.LICHESS_TOKEN }}
         run: |
-          # Config dosyasındaki token yer tutucusunu güncelle
           sed -i "s/\$LICHESS_TOKEN/$LICHESS_TOKEN/g" config.yml || echo "Config hatasi!"
-          
-          # Botu başlat
           python -u lichess-bot.py
